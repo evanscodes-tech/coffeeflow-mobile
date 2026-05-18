@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,30 +10,123 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
 import { COLORS } from '../constants/config';
 
 const LoginScreen: React.FC = () => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { signIn } = useAuth();
+  const { requestOtp, verifyOtp } = useAuth();
 
-  const handleLogin = async () => {
-    if (!username || !password) {
-      Alert.alert('Error', 'Please enter username and password');
+  // Clear stored tokens when component mounts
+  useEffect(() => {
+    const clearStorage = async () => {
+      await AsyncStorage.removeItem('authToken');
+      await AsyncStorage.removeItem('userData');
+      console.log('✅ Cleared old tokens from storage');
+    };
+    clearStorage();
+  }, []);
+
+  const handleRequestOtp = async () => {
+    if (!phoneNumber || phoneNumber.length < 10) {
+      Alert.alert('Error', 'Please enter a valid phone number');
       return;
     }
 
     setLoading(true);
-    const success = await signIn(username, password);
+    const success = await requestOtp(phoneNumber);
     setLoading(false);
 
-    if (!success) {
-      Alert.alert('Login Failed', 'Invalid username or password');
+    if (success) {
+      setOtpSent(true);
+      Alert.alert('Success', 'OTP sent to your phone number');
+    } else {
+      Alert.alert('Error', 'Failed to send OTP. Please try again.');
     }
   };
 
+  const handleVerifyOtp = async () => {
+    if (!otpCode || otpCode.length < 6) {
+      Alert.alert('Error', 'Please enter the 6-digit OTP code');
+      return;
+    }
+
+    setLoading(true);
+    const success = await verifyOtp(phoneNumber, otpCode);
+    setLoading(false);
+
+    if (!success) {
+      Alert.alert('Login Failed', 'Invalid OTP code. Please try again.');
+    }
+  };
+
+  const handleResendOtp = async () => {
+    setLoading(true);
+    const success = await requestOtp(phoneNumber);
+    setLoading(false);
+    
+    if (success) {
+      Alert.alert('Success', 'New OTP sent to your phone');
+    } else {
+      Alert.alert('Error', 'Failed to resend OTP');
+    }
+  };
+
+  // First screen - Enter phone number
+  if (!otpSent) {
+    return (
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <Text style={styles.title}>☕ CoffeeFlow</Text>
+            <Text style={styles.subtitle}>Farmer Portal</Text>
+          </View>
+
+          <View style={styles.form}>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Phone Number</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="0712345678"
+                value={phoneNumber}
+                onChangeText={setPhoneNumber}
+                keyboardType="phone-pad"
+                maxLength={12}
+              />
+              <Text style={styles.hint}>
+                Enter the phone number registered with your cooperative
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.loginButton}
+              onPress={handleRequestOtp}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.loginButtonText}>Send OTP</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.footerText}>
+            Contact your cooperative if you're not registered
+          </Text>
+        </View>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // Second screen - Enter OTP code
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -42,48 +135,54 @@ const LoginScreen: React.FC = () => {
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.title}>☕ CoffeeFlow</Text>
-          <Text style={styles.subtitle}>Farmer Portal</Text>
+          <Text style={styles.subtitle}>Enter OTP Code</Text>
+          <Text style={styles.phoneText}>Sent to {phoneNumber}</Text>
         </View>
 
         <View style={styles.form}>
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Username</Text>
+            <Text style={styles.label}>6-Digit OTP</Text>
             <TextInput
-              style={styles.input}
-              placeholder="Enter your username"
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
+              style={[styles.input, styles.otpInput]}
+              placeholder="000000"
+              value={otpCode}
+              onChangeText={setOtpCode}
+              keyboardType="number-pad"
+              maxLength={6}
+              textAlign="center"
             />
           </View>
 
           <TouchableOpacity
             style={styles.loginButton}
-            onPress={handleLogin}
+            onPress={handleVerifyOtp}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.loginButtonText}>Login</Text>
+              <Text style={styles.loginButtonText}>Verify & Login</Text>
             )}
           </TouchableOpacity>
-        </View>
 
-        <Text style={styles.footerText}>
-          Contact your cooperative for account access
-        </Text>
+          <TouchableOpacity
+            style={styles.resendButton}
+            onPress={handleResendOtp}
+            disabled={loading}
+          >
+            <Text style={styles.resendButtonText}>Resend OTP</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => {
+              setOtpSent(false);
+              setOtpCode('');
+            }}
+          >
+            <Text style={styles.backButtonText}>← Change phone number</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -113,6 +212,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: COLORS.textLight,
   },
+  phoneText: {
+    fontSize: 14,
+    color: COLORS.primary,
+    marginTop: 8,
+  },
   form: {
     backgroundColor: COLORS.surface,
     borderRadius: 12,
@@ -140,6 +244,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: '#FAF7F4',
   },
+  otpInput: {
+    fontSize: 24,
+    letterSpacing: 8,
+  },
+  hint: {
+    fontSize: 12,
+    color: COLORS.textLight,
+    marginTop: 4,
+  },
   loginButton: {
     backgroundColor: COLORS.primary,
     borderRadius: 8,
@@ -151,6 +264,22 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
+  },
+  resendButton: {
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  resendButtonText: {
+    color: COLORS.primary,
+    fontSize: 14,
+  },
+  backButton: {
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  backButtonText: {
+    color: COLORS.textLight,
+    fontSize: 14,
   },
   footerText: {
     marginTop: 32,

@@ -1,4 +1,4 @@
-export const API_URL = 'http://192.168.19.69:8000';
+export const API_URL = 'http://192.168.1.113:8000';  // Use the IP from ipconfig
 
 export const COLORS = {
   primary: '#8B5A2B',

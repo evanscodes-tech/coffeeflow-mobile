@@ -14,7 +14,7 @@ import { DashboardData } from '../types';
 import { COLORS } from '../constants/config';
 
 const DashboardScreen: React.FC = () => {
-  const { user, signOut } = useAuth();
+  const { user, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<DashboardData | null>(null);
@@ -22,6 +22,7 @@ const DashboardScreen: React.FC = () => {
   const loadDashboardData = async () => {
     try {
       const dashboardData = await farmerAPI.getDashboard();
+      console.log('Dashboard data loaded:', dashboardData);
       setData(dashboardData);
     } catch (error) {
       console.error('Failed to load dashboard:', error);
@@ -40,6 +41,14 @@ const DashboardScreen: React.FC = () => {
     loadDashboardData();
   };
 
+  // Helper function to safely format numbers
+  const formatNumber = (value: any, decimals: number = 0): string => {
+    if (value === undefined || value === null || isNaN(value)) {
+      return decimals === 0 ? '0' : '0.0';
+    }
+    return Number(value).toFixed(decimals);
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -47,6 +56,15 @@ const DashboardScreen: React.FC = () => {
       </View>
     );
   }
+
+  // Safely access nested properties
+  const farmerName = data?.farmer?.full_name || 'Farmer';
+  const farmName = data?.farmer?.farm_name || 'Farm';
+  const totalDeliveries = data?.stats?.total_deliveries || 0;
+  const totalKgs = data?.stats?.total_kgs || 0;
+  const paidPayments = data?.stats?.paid_payments || 0;
+  const pendingPayments = data?.stats?.pending_payments || 0;
+  const recentDeliveries = data?.recent_deliveries || [];
 
   return (
     <ScrollView
@@ -58,32 +76,32 @@ const DashboardScreen: React.FC = () => {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.welcomeText}>Welcome back,</Text>
-        <Text style={styles.farmerName}>{data?.farmer.full_name}</Text>
-        <Text style={styles.farmName}>{data?.farmer.farm_name}</Text>
+        <Text style={styles.farmerName}>{farmerName}</Text>
+        <Text style={styles.farmName}>{farmName}</Text>
       </View>
 
       {/* Stats Cards */}
       <View style={styles.statsGrid}>
         <View style={styles.statCard}>
-          <Text style={styles.statValue}>{data?.stats.total_deliveries}</Text>
+          <Text style={styles.statValue}>{totalDeliveries}</Text>
           <Text style={styles.statLabel}>Deliveries</Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={styles.statValue}>{data?.stats.total_kgs.toFixed(0)} kg</Text>
+          <Text style={styles.statValue}>{formatNumber(totalKgs, 0)} kg</Text>
           <Text style={styles.statLabel}>Total Coffee</Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={styles.statValue}>KES {data?.stats.paid_payments.toFixed(0)}</Text>
+          <Text style={styles.statValue}>KES {formatNumber(paidPayments, 0)}</Text>
           <Text style={styles.statLabel}>Paid</Text>
         </View>
       </View>
 
       {/* Pending Payments Alert */}
-      {data && data.stats.pending_payments > 0 && (
+      {pendingPayments > 0 && (
         <View style={styles.pendingCard}>
           <Text style={styles.pendingTitle}>Pending Payment</Text>
           <Text style={styles.pendingAmount}>
-            KES {data.stats.pending_payments.toFixed(2)}
+            KES {formatNumber(pendingPayments, 2)}
           </Text>
         </View>
       )}
@@ -91,28 +109,35 @@ const DashboardScreen: React.FC = () => {
       {/* Recent Deliveries */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Recent Deliveries</Text>
-        {data?.recent_deliveries.map((delivery) => (
-          <TouchableOpacity key={delivery.id} style={styles.deliveryCard}>
-            <View style={styles.deliveryHeader}>
-              <Text style={styles.batchCode}>{delivery.batch_code}</Text>
-              <View style={[
-                styles.statusBadge,
-                { backgroundColor: delivery.payment_status === 'Paid' ? COLORS.success : COLORS.warning }
-              ]}>
-                <Text style={styles.statusText}>{delivery.payment_status}</Text>
+        {recentDeliveries.length > 0 ? (
+          recentDeliveries.map((delivery) => (
+            <TouchableOpacity key={delivery.id} style={styles.deliveryCard}>
+              <View style={styles.deliveryHeader}>
+                <Text style={styles.batchCode}>{delivery.batch_code || 'N/A'}</Text>
+                <View style={[
+                  styles.statusBadge,
+                  { backgroundColor: delivery.payment_status === 'Paid' ? COLORS.success : COLORS.warning }
+                ]}>
+                  <Text style={styles.statusText}>{delivery.payment_status || 'Pending'}</Text>
+                </View>
               </View>
-            </View>
-            <View style={styles.deliveryDetails}>
-              <Text style={styles.deliveryDate}>{delivery.date}</Text>
-              <Text style={styles.deliveryWeight}>{delivery.cherry_kg} kg</Text>
-              <Text style={styles.deliveryAmount}>KES {delivery.total_amount.toFixed(0)}</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+              <View style={styles.deliveryDetails}>
+                <Text style={styles.deliveryDate}>{delivery.date || 'N/A'}</Text>
+                <Text style={styles.deliveryWeight}>{formatNumber(delivery.cherry_kg, 1)} kg</Text>
+                <Text style={styles.deliveryAmount}>KES {formatNumber(delivery.total_amount, 0)}</Text>
+              </View>
+            </TouchableOpacity>
+          ))
+        ) : (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No deliveries yet</Text>
+            <Text style={styles.emptySubText}>Your coffee deliveries will appear here</Text>
+          </View>
+        )}
       </View>
 
       {/* Logout Button */}
-      <TouchableOpacity style={styles.logoutButton} onPress={signOut}>
+      <TouchableOpacity style={styles.logoutButton} onPress={logout}>
         <Text style={styles.logoutText}>Logout</Text>
       </TouchableOpacity>
     </ScrollView>
@@ -270,6 +295,21 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  emptyContainer: {
+    padding: 32,
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: 8,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: COLORS.textLight,
+  },
+  emptySubText: {
+    fontSize: 12,
+    color: COLORS.textLight,
+    marginTop: 8,
   },
 });
 
